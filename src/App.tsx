@@ -288,6 +288,8 @@ export default function App() {
         setError("Invalid email address.");
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError("Invalid email or password.");
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError("Email/Password sign-in is not enabled in the Firebase Console. Please enable it under Authentication > Sign-in method.");
       } else {
         setError(err.message || "Failed to authenticate. Please try again.");
       }
