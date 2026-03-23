@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Information about a user (client or practitioner).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["client", "practitioner", "admin"] },
+        "specialization": { "type": "string", "description": "Only for practitioners" },
+        "bio": { "type": "string" },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Appointment": {
+      "title": "Booking",
+      "description": "A scheduled appointment between a client and a practitioner.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "practitionerId": { "type": "string" },
+        "service": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "practitionerId", "service", "date", "status"]
+    },
+    "Service": {
+      "title": "Tax Service",
+      "description": "A type of tax service offered by ITECH SA.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "duration": { "type": "number", "description": "Duration in minutes" }
+      },
+      "required": ["id", "name", "duration"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Appointment bookings"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Available tax services"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - email: string (required, valid email)
+    //   - role: string (required, ['client', 'practitioner', 'admin'])
+    //   - specialization: string (optional)
+    //   - bio: string (optional)
+    //   - photoURL: string (optional)
+    //
+    // Collection: appointments
+    // Document ID: appointmentId
+    // Fields:
+    //   - clientId: string (required, UID)
+    //   - practitionerId: string (required, UID)
+    //   - service: string (required)
+    //   - date: timestamp (required)
+    //   - status: string (required, ['pending', 'confirmed', 'cancelled'])
+    //   - notes: string (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: services
+    // Document ID: serviceId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - duration: number (required)
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "siphes9812@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['client', 'practitioner', 'admin'];
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['clientId', 'practitionerId', 'service', 'date', 'status', 'createdAt']) &&
+             data.clientId == request.auth.uid &&
+             data.status in ['pending', 'confirmed', 'cancelled'] &&
+             data.date is timestamp &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role != 'admin' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAppointment(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.clientId == request.auth.uid || resource.data.practitionerId == request.auth.uid || isAdmin()) && 
+                    request.resource.data.clientId == resource.data.clientId &&
+                    request.resource.data.practitionerId == resource.data.practitionerId;
+      allow delete: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
