@@ -15,7 +15,10 @@ import {
   signOut,
   User as FirebaseUser,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile
 } from 'firebase/auth';
 import { 
   collection, 
@@ -32,6 +35,9 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { 
+  Mail, 
+  Lock, 
+  UserPlus,
   Calendar as CalendarIcon, 
   Clock, 
   User as UserIcon, 
@@ -160,6 +166,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
 
   // Booking State
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -242,6 +252,49 @@ export default function App() {
       pUnsubscribe();
     };
   }, [user, profile]);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setError(null);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      if (authMode === 'signup') {
+        if (!displayName) throw new Error("Please enter your name.");
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, { displayName });
+        
+        // Create profile in Firestore
+        const profileRef = doc(db, 'users', userCredential.user.uid);
+        const newProfile: UserProfile = {
+          uid: userCredential.user.uid,
+          name: displayName,
+          email: email,
+          role: 'client'
+        };
+        await setDoc(profileRef, newProfile);
+        setProfile(newProfile);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      console.error("Email Auth Error:", err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError("This email is already in use. Please log in instead.");
+      } else if (err.code === 'auth/weak-password') {
+        setError("Password should be at least 6 characters.");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Invalid email address.");
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError("Invalid email or password.");
+      } else {
+        setError(err.message || "Failed to authenticate. Please try again.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (isLoggingIn) return;
@@ -377,8 +430,14 @@ export default function App() {
           
           <Card className="p-8 space-y-6">
             <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Welcome Back</h2>
-              <p className="text-sm text-gray-500">Sign in to manage your tax appointments and consultations.</p>
+              <h2 className="text-xl font-semibold">
+                {authMode === 'login' ? 'Welcome Back' : 'Create Account'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {authMode === 'login' 
+                  ? 'Sign in to manage your tax appointments.' 
+                  : 'Join ITECH SA to book your tax consultations.'}
+              </p>
             </div>
 
             {error && (
@@ -388,16 +447,85 @@ export default function App() {
               </div>
             )}
 
-            <Button onClick={handleLogin} className="w-full py-3" disabled={isLoggingIn}>
-              {isLoggingIn ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-                  Continue with Google
-                </>
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              {authMode === 'signup' && (
+                <div className="space-y-1 text-left">
+                  <label className="text-xs font-semibold text-gray-500 uppercase ml-1">Full Name</label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="John Doe"
+                      className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                  </div>
+                </div>
               )}
+              <div className="space-y-1 text-left">
+                <label className="text-xs font-semibold text-gray-500 uppercase ml-1">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input 
+                    type="email" 
+                    required
+                    placeholder="name@example.com"
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1 text-left">
+                <label className="text-xs font-semibold text-gray-500 uppercase ml-1">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input 
+                    type="password" 
+                    required
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full py-3" disabled={isLoggingIn}>
+                {isLoggingIn ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                ) : (
+                  authMode === 'login' ? 'Sign In' : 'Sign Up'
+                )}
+              </Button>
+            </form>
+
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-gray-400">Or continue with</span>
+              </div>
+            </div>
+
+            <Button onClick={handleLogin} variant="outline" className="w-full py-3" disabled={isLoggingIn}>
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
+              Google
             </Button>
+
+            <div className="pt-2">
+              <button 
+                onClick={() => {
+                  setAuthMode(authMode === 'login' ? 'signup' : 'login');
+                  setError(null);
+                }}
+                className="text-sm text-blue-600 hover:underline font-medium"
+              >
+                {authMode === 'login' ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+              </button>
+            </div>
           </Card>
           
           <p className="text-xs text-gray-400">
