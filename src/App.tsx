@@ -52,7 +52,8 @@ import {
   Settings,
   Menu,
   X,
-  AlertCircle
+  AlertCircle,
+  Globe
 } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, parseISO, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -110,7 +111,7 @@ const Button = ({
 }: { 
   children: React.ReactNode; 
   onClick?: () => void; 
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger'; 
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost'; 
   className?: string;
   disabled?: boolean;
   type?: 'button' | 'submit';
@@ -120,7 +121,8 @@ const Button = ({
     primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
     secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
     outline: "border border-gray-300 text-gray-700 hover:bg-gray-50",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
+    ghost: "text-gray-600 hover:bg-gray-100"
   };
 
   return (
@@ -170,6 +172,8 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
 
   // Booking State
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -179,6 +183,10 @@ export default function App() {
   const [bookingNotes, setBookingNotes] = useState('');
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) setLoadingTimeout(true);
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       try {
         setUser(u);
@@ -208,6 +216,7 @@ export default function App() {
         setError("Failed to load user profile. Please refresh the page.");
       } finally {
         setLoading(false);
+        clearTimeout(timer);
       }
     });
     return unsubscribe;
@@ -408,8 +417,80 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-gray-600 font-medium">Loading ITECH SA...</p>
+        
+        {loadingTimeout && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 max-w-md p-6 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4"
+          >
+            <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
+            <h3 className="font-bold text-gray-900">Taking longer than expected?</h3>
+            <p className="text-sm text-gray-500">
+              This might be due to a slow connection or a configuration issue in the Firebase Console.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
+                Refresh Page
+              </Button>
+              <Button onClick={() => setShowTroubleshoot(true)} variant="ghost" className="w-full text-blue-600">
+                Troubleshoot Connection
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {showTroubleshoot && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <Card className="max-w-lg w-full p-8 space-y-6">
+              <div className="flex justify-between items-start">
+                <h2 className="text-2xl font-bold">Troubleshoot Login</h2>
+                <button onClick={() => setShowTroubleshoot(false)} className="p-1 hover:bg-gray-100 rounded-full">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-4 text-left">
+                <div className="p-4 bg-blue-50 rounded-xl space-y-2">
+                  <h3 className="font-semibold text-blue-900 flex items-center gap-2">
+                    <Briefcase className="w-4 h-4" /> 1. Enable Sign-in Methods
+                  </h3>
+                  <p className="text-sm text-blue-800">
+                    Go to <strong>Authentication &gt; Sign-in method</strong> in Firebase Console and ensure <strong>Email/Password</strong> and <strong>Google</strong> are enabled.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-blue-50 rounded-xl space-y-2">
+                  <h3 className="font-semibold text-blue-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4" /> 2. Authorize Domains
+                  </h3>
+                  <p className="text-sm text-blue-800">
+                    Add this domain to <strong>Authentication &gt; Settings &gt; Authorized domains</strong>:
+                  </p>
+                  <code className="block p-2 bg-white rounded border border-blue-200 text-xs break-all">
+                    {window.location.hostname}
+                  </code>
+                </div>
+
+                <div className="p-4 bg-amber-50 rounded-xl space-y-2">
+                  <h3 className="font-semibold text-amber-900 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" /> 3. Check Quota
+                  </h3>
+                  <p className="text-sm text-amber-800">
+                    If you see "Quota exceeded", your Firebase free tier limit has been reached. It will reset tomorrow.
+                  </p>
+                </div>
+              </div>
+
+              <Button onClick={() => setShowTroubleshoot(false)} className="w-full">
+                Got it
+              </Button>
+            </Card>
+          </div>
+        )}
       </div>
     );
   }
@@ -443,9 +524,19 @@ export default function App() {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm text-left">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <p>{error}</p>
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl space-y-2 text-red-600 text-sm text-left">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <p>{error}</p>
+                </div>
+                {(error.includes("not enabled") || error.includes("not authorized")) && (
+                  <button 
+                    onClick={() => setShowTroubleshoot(true)}
+                    className="ml-8 text-xs font-bold underline hover:text-red-800"
+                  >
+                    View Troubleshooting Steps
+                  </button>
+                )}
               </div>
             )}
 
