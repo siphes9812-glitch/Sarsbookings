@@ -13,7 +13,9 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut,
-  User as FirebaseUser
+  User as FirebaseUser,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { 
   collection, 
@@ -168,29 +170,35 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        // Fetch or create profile
-        const profileRef = doc(db, 'users', u.uid);
-        const profileSnap = await getDoc(profileRef);
-        
-        if (profileSnap.exists()) {
-          setProfile(profileSnap.data() as UserProfile);
+      try {
+        setUser(u);
+        if (u) {
+          // Fetch or create profile
+          const profileRef = doc(db, 'users', u.uid);
+          const profileSnap = await getDoc(profileRef);
+          
+          if (profileSnap.exists()) {
+            setProfile(profileSnap.data() as UserProfile);
+          } else {
+            const newProfile: UserProfile = {
+              uid: u.uid,
+              name: u.displayName || 'Anonymous User',
+              email: u.email || '',
+              role: 'client',
+              photoURL: u.photoURL || undefined
+            };
+            await setDoc(profileRef, newProfile);
+            setProfile(newProfile);
+          }
         } else {
-          const newProfile: UserProfile = {
-            uid: u.uid,
-            name: u.displayName || 'Anonymous User',
-            email: u.email || '',
-            role: 'client',
-            photoURL: u.photoURL || undefined
-          };
-          await setDoc(profileRef, newProfile);
-          setProfile(newProfile);
+          setProfile(null);
         }
-      } else {
-        setProfile(null);
+      } catch (err) {
+        console.error("Auth State Error:", err);
+        setError("Failed to load user profile. Please refresh the page.");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsubscribe;
   }, []);
@@ -239,19 +247,36 @@ export default function App() {
     if (isLoggingIn) return;
     setIsLoggingIn(true);
     setError(null);
+    console.log("Starting login process...");
     try {
+      auth.useDeviceLanguage();
+      await setPersistence(auth, browserLocalPersistence);
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      provider.setCustomParameters({ prompt: 'select_account' });
+      console.log("Opening popup...");
+      const result = await signInWithPopup(auth, provider);
+      console.log("Login successful:", result.user.email);
     } catch (err: any) {
-      console.error("Login Error:", err);
+      console.error("Login Error Details:", {
+        code: err.code,
+        message: err.message,
+        customData: err.customData,
+        email: err.email
+      });
       if (err.code === 'auth/popup-blocked') {
         setError("Login popup was blocked by your browser. Please allow popups for this site and try again.");
       } else if (err.code === 'auth/cancelled-popup-request') {
         setError("Login was interrupted. Please try again.");
       } else if (err.code === 'auth/popup-closed-by-user') {
         setError("Login window was closed before completion. Please try again.");
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError("This domain is not authorized for Google Sign-In. Please contact support.");
+      } else if (err.code === 'auth/internal-error') {
+        setError("An internal error occurred. Please try again later.");
+      } else if (err.code === 'auth/network-request-failed') {
+        setError("Network error. Please check your internet connection.");
       } else {
-        setError("Failed to sign in. Please try again.");
+        setError(`Failed to sign in: ${err.message || "Unknown error"}`);
       }
     } finally {
       setIsLoggingIn(false);
@@ -355,6 +380,14 @@ export default function App() {
               <h2 className="text-xl font-semibold">Welcome Back</h2>
               <p className="text-sm text-gray-500">Sign in to manage your tax appointments and consultations.</p>
             </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm text-left">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <p>{error}</p>
+              </div>
+            )}
+
             <Button onClick={handleLogin} className="w-full py-3" disabled={isLoggingIn}>
               {isLoggingIn ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
